@@ -1,0 +1,11 @@
+feedparser
+Pillow
+pymorphy2
+pymorphy2-dicts-ru
+python-dotenv
+python-escpos
+pyusb
+qrcode
+requests
+setuptools
+wheel
