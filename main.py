@@ -17,18 +17,18 @@ def print_start_message():
     print("TeleType started")
     img = render_status_block("started")
     time.sleep(PAUSE_PRE_PRINT)
+    init_beep()
     print_image(img)
     time.sleep(PAUSE_POST_PRINT)
-    init_beep()
 
 
 def print_shutdown_message():
     print("TeleType stopped")
     img = render_status_block("stopped")
     time.sleep(PAUSE_PRE_PRINT)
+    init_beep()
     print_image(img)
     time.sleep(PAUSE_POST_PRINT)
-    init_beep()
 
 
 def get_digest_slot(dt):
@@ -75,9 +75,9 @@ def main():
     rates = get_rates()
     img_weather = render_weather_block(weather, rates)
     time.sleep(PAUSE_PRE_PRINT)
+    print_beep()
     print_image(img_weather)
     time.sleep(PAUSE_POST_PRINT)
-    print_beep()
 
     # --- СТАРТОВЫЙ ДАЙДЖЕСТ (новости за 4 часа) ---
     startup_news = get_new_news(first_run=True)
@@ -85,9 +85,9 @@ def main():
         startup_news.sort(key=lambda x: x["timestamp"])
         img_digest = render_digest(startup_news)
         time.sleep(PAUSE_PRE_PRINT)
+        print_beep()
         print_image(img_digest)
         time.sleep(PAUSE_POST_PRINT)
-        print_beep()
         last_digest_slot = get_digest_slot(datetime.now())
 
     try:
@@ -102,9 +102,9 @@ def main():
                 if item.get("important", False):
                     img_item = render_important_news(item)
                     time.sleep(PAUSE_PRE_PRINT)
+                    alert_beep()
                     print_image(img_item)
                     time.sleep(PAUSE_POST_PRINT)
-                    alert_beep()
                 else:
                     ts = item.get("timestamp", datetime.now())
                     slot = get_digest_slot(ts)
@@ -118,9 +118,9 @@ def main():
                 rates = get_rates()
                 img_weather = render_weather_block(weather, rates)
                 time.sleep(PAUSE_PRE_PRINT)
+                print_beep()
                 print_image(img_weather)
                 time.sleep(PAUSE_POST_PRINT)
-                print_beep()
                 next_weather = next_weather_time(now)
 
             # --- ПЕЧАТЬ ДАЙДЖЕСТ ---
@@ -131,9 +131,9 @@ def main():
                     items.sort(key=lambda x: x["timestamp"])
                     img_digest = render_digest(items)
                     time.sleep(PAUSE_PRE_PRINT)
+                    print_beep()
                     print_image(img_digest)
                     time.sleep(PAUSE_POST_PRINT)
-                    print_beep()
                     del digest_slots[slot_to_print]
                 last_digest_slot = current_slot
 

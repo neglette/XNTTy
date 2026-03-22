@@ -10,7 +10,7 @@ VENDOR_ID = int(os.getenv("VENDOR_ID"), 16)  # hex в int
 PRODUCT_ID = int(os.getenv("PRODUCT_ID"), 16)  # hex в int
 
 # ---  PRINT ---
-PAPER_WIDTH_MM = 56
+PAPER_WIDTH_MM = 80
 
 META_SPACING = 10
 DASH_STEP = 14
