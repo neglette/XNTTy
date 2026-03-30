@@ -1,2 +1,2 @@
-VERSION = "1.0.93"
+VERSION = "1.93"
 APP_NAME = "XNTTy"
