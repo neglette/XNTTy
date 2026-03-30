@@ -1,7 +1,17 @@
+from weasyprint import HTML
+import io
 from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime
 import qrcode
+from weather_icons import *
+from playwright.sync_api import sync_playwright
+import tempfile
 import os
+from pdf2image import convert_from_bytes
+from pathlib import Path
+import base64
+from cairosvg import svg2png
+from io import BytesIO
 
 from config import (
     # шрифты
@@ -34,6 +44,14 @@ from config import (
 FONT_MONO = ImageFont.truetype(FONT_PATH_MONO, FONT_SIZE_MONO)
 FONT_UI_TITLE = ImageFont.truetype(FONT_PATH_UI, FONT_SIZE_UI_TITLE)
 FONT_UI_TEXT = ImageFont.truetype(FONT_PATH_UI, FONT_SIZE_UI_TEXT)
+
+ICON_PATH = Path(ICON_PATH)
+
+
+def svg_to_data_uri(path, height_px):
+    png_bytes = svg2png(url=str(path), output_height=height_px)
+    b64 = base64.b64encode(png_bytes).decode("ascii")
+    return f"data:image/png;base64,{b64}"
 
 
 def clean_text(text: str) -> str:
@@ -361,136 +379,257 @@ def render_digest(items):
     return img
 
 
+# --- предполагается, что weather и rates уже получены ---
+
 def render_weather_block(weather, rates):
-    import os
+    from pathlib import Path
+    from datetime import datetime
+    from weasyprint import HTML
+    from pdf2image import convert_from_bytes
+    from PIL import Image
 
-    # увеличим шрифт температуры
-    temp_font_size = FONT_SIZE_UI_TITLE * 2
-    FONT_TEMP = ImageFont.truetype(FONT_PATH_UI, temp_font_size)
+    ICON_DIR = Path(__file__).parent / "weather_icons"
 
-    # увеличим шрифт для курсов
-    FONT_RATE = ImageFont.truetype(FONT_PATH_UI, FONT_SIZE_UI_TITLE)
+    def uri(name):
+        return (ICON_DIR / name).resolve().as_uri()
 
-    img_height = 240
-    img = Image.new("L", (PRINT_WIDTH, img_height), 255)
-    draw = ImageDraw.Draw(img)
-
-    y = PADDING_Y
-
-    # деление блока на три части
-    third_w = PRINT_WIDTH // 3
-    left_x = 0
-    mid_x = third_w
-    right_x = third_w * 2
-
-    # --------------------
-    # ЛЕВАЯ ЧАСТЬ: иконка
-    # --------------------
-    icon_size = third_w - 2 * PADDING_X
-    icon = None
-    icon_path = os.path.join(ICON_PATH, f"{weather['icon']}.png")
-    if os.path.exists(icon_path):
-        try:
-            icon = Image.open(icon_path).convert("L")
-            icon = icon.resize((icon_size, icon_size), Image.LANCZOS)
-        except Exception as e:
-            print("Ошибка при открытии иконки:", e)
-            icon = None
-    # иконка вставляется как есть, без конверсии в 1-bit
-    icon_h = icon_size if icon else 0
-
-    # --------------------
-    # СРЕДНЯЯ ЧАСТЬ: температура и время
-    # --------------------
-    temp_text = f"{weather['temp']}°C"
-
-    # выбираем ближайшее событие
-    now_hm = datetime.now().strftime("%H:%M")
-    if now_hm < weather["sunset"]:
-        arrow = "↘"
-        time_text = f"{arrow} {weather['sunset']}"
-    else:
-        arrow = "↗"
-        time_text = f"{arrow} {weather['sunrise']}"
-
-    temp_bbox = draw.textbbox((0, 0), temp_text, font=FONT_TEMP)
-    temp_w = temp_bbox[2] - temp_bbox[0]
-    temp_h = temp_bbox[3] - temp_bbox[1]
-
-    time_bbox = draw.textbbox((0, 0), time_text, font=FONT_UI_TEXT)
-    time_w = time_bbox[2] - time_bbox[0]
-    time_h = time_bbox[3] - time_bbox[1]
-
-    mid_h = temp_h + LINE_SPACING + time_h + 4  # небольшой отступ перед временем
-
-    # --------------------
-    # ПРАВАЯ ЧАСТЬ: курсы
-    # --------------------
-    usd_text = f"${rates['usd']:.2f}"
-    eur_text = f"€{rates['eur']:.2f}"
-
-    usd_bbox = draw.textbbox((0, 0), usd_text, font=FONT_RATE)
-    usd_w = usd_bbox[2] - usd_bbox[0]
-    usd_h = usd_bbox[3] - usd_bbox[1]
-
-    eur_bbox = draw.textbbox((0, 0), eur_text, font=FONT_RATE)
-    eur_w = eur_bbox[2] - eur_bbox[0]
-    eur_h = eur_bbox[3] - eur_bbox[1]
-
-    right_h = usd_h + LINE_SPACING + eur_h
-
-    # --------------------
-    # ОБЩАЯ ВЫСОТА
-    # --------------------
-    content_h = max(icon_h, mid_h, right_h)
-    total_h = y + content_h + PADDING_Y
-
-    # --------------------
-    # РАМКА ВСЕГО БЛОКА
-    # --------------------
-    draw.rectangle(
-        [(0, 0), (PRINT_WIDTH - 1, total_h - 1)],
-        outline=0,
-        width=2
+    main_icon = svg_to_data_uri(
+        ICON_DIR / get_weather_icon(weather['weather_id'], weather['is_day']),
+        300
     )
 
-    # --------------------
-    # ВЕРТИКАЛЬНОЕ ЦЕНТРИРОВАНИЕ
-    # --------------------
-    content_top = y
+    now = datetime.now().strftime("%H:%M")
+    if now < weather["sunset"]:
+        sun_icon = "wi-sunset.svg"
+        sun_time = weather["sunset"]
+    else:
+        sun_icon = "wi-sunrise.svg"
+        sun_time = weather["sunrise"]
 
-    # --- иконка ---
-    if icon:
-        icon_y = content_top + (content_h - icon_h) // 2
-        img.paste(icon, (left_x + PADDING_X, icon_y))
+    html = f"""
+    <html>
+    <head>
+    <meta charset="utf-8">
 
-    # --- температура ---
-    temp_x = mid_x + (third_w - temp_w) // 2
-    temp_y = content_top + 0  # прижимаем к верху средней части
-    draw.text((temp_x, temp_y), temp_text, font=FONT_TEMP, fill=0)
+    <style>
 
-    # --- время восхода/заката ---
-    time_x = mid_x + (third_w - time_w) // 2
-    time_y = content_top + content_h - time_h - 2  # небольшой отступ от низа
-    draw.text((time_x, time_y), time_text, font=FONT_UI_TEXT, fill=0)
+    @page {{
+    margin:0;
+    }}
 
-    # --- USD ---
-    usd_x = right_x + (third_w - usd_w) // 2
-    usd_y = content_top + 0  # прижать к верху правой части
-    draw.text((usd_x, usd_y), usd_text, font=FONT_RATE, fill=0)
-    draw.text((usd_x + BOLD_OFFSET, usd_y), usd_text, font=FONT_RATE, fill=0)
+    body {{
+    margin:0;
+    padding:0;
+    font-family:sans-serif;
+    }}
 
-    # --- EUR ---
-    eur_x = right_x + (third_w - eur_w) // 2
-    eur_y = content_top + content_h - eur_h - 2  # прижать к низу с отступом
-    draw.text((eur_x, eur_y), eur_text, font=FONT_RATE, fill=0)
-    draw.text((eur_x + BOLD_OFFSET, eur_y), eur_text, font=FONT_RATE, fill=0)
+    body::before {{
+    content: "";
+    display: block;
+    border-top: 1px solid black;
+    width: 100%;
+    }}
 
-    # --------------------
-    # ВЕРТИКАЛЬНЫЕ РАЗДЕЛИТЕЛИ
-    # --------------------
-    draw.line((third_w, y, third_w, total_h), fill=0, width=1)
-    draw.line((third_w * 2, y, third_w * 2, total_h), fill=0, width=1)
+    table {{
+    border-collapse:collapse;
+    width:100%;
+    }}
 
-    img = img.crop((0, 0, PRINT_WIDTH, total_h))
+    .main {{
+    border:3px solid black;
+    }}
+
+    td {{
+    padding:6px;
+    vertical-align:middle;
+    }}
+
+    .center {{ text-align:center; }}
+    .left {{ text-align:left; }}
+
+    .vline {{ border-left:2px solid black; }}
+
+    .hline > td {{
+    border-top:2px solid black;
+    }}
+
+    .cross-top > td {{
+    border-top:2px solid black;
+    }}
+
+    .cross-left {{
+    border-left:2px solid black;
+    }}
+
+    .big {{
+    font-size:120px;
+    font-weight:bold;
+    }}
+
+    .mid {{ font-size:48px; }}
+    .small {{ font-size:36px; }}
+
+    .currency {{
+    font-size:60px;
+    font-weight:bold;
+    }}
+
+    .icon-main {{ height:260px; }}
+    .icon {{ height:90px; }}
+    .icon-small {{ height:70px; }}
+
+    </style>
+    </head>
+
+    <body>
+
+    <table class="main">
+
+    <tr>
+
+    <!-- ЛЕВЫЙ ВЕРХ -->
+    <td width="66%">
+
+    <table width="100%">
+    <tr>
+
+    <td class="center" width="45%">
+    <img src="{main_icon}" class="icon-main">
+    </td>
+
+    <td class="center" width="55%">
+    <div class="big">{weather['temp']}°</div>
+    <div class="small">{weather['feels_like']}°</div>
+    </td>
+
+    </tr>
+    </table>
+
+    </td>
+
+
+    <!-- ПРАВЫЙ ВЕРХ -->
+    <td width="34%" class="vline">
+
+    <table width="100%">
+
+    <tr>
+
+    <td class="center">
+    <img src="{uri('wi-wind-deg.svg')}" class="icon"
+    style="transform:rotate({weather['wind_deg']}deg);">
+    </td>
+
+    <td class="center cross-left">
+    <img src="{uri('wi-barometer.svg')}" class="icon-small">
+    <span class="mid">{weather['pressure']}</span>
+    </td>
+
+    </tr>
+
+    <tr class="cross-top">
+
+    <td class="center">
+    <img src="{uri(f'wi-wind-beaufort-{weather["wind_beaufort"]}.svg')}" class="icon">
+    </td>
+
+    <td class="center cross-left">
+    <img src="{uri('wi-humidity.svg')}" class="icon-small">
+    <span class="mid">{weather['humidity']}%</span>
+    </td>
+
+    </tr>
+
+    </table>
+
+    </td>
+
+    </tr>
+
+
+    <tr class="hline">
+
+    <!-- ЛЕВЫЙ НИЗ -->
+    <td>
+
+    <table width="100%">
+
+    <tr>
+
+    <td width="40%" class="center">
+    <img src="{uri(get_moon_icon(weather['moon_phase']))}" class="icon">
+    </td>
+
+    <td width="60%" rowspan="2" class="center vline">
+    <img src="{uri(get_weather_icon(weather['next']['weather_id'], weather['is_day']))}" class="icon">
+    <div class="mid">{weather['next']['temp']}°</div>
+    </td>
+
+    </tr>
+
+    <tr>
+
+    <td>
+
+    <table width="100%">
+    <tr>
+
+    <td width="40%" class="center">
+    <img src="{uri(sun_icon)}" class="icon-small">
+    </td>
+
+    <td width="60%" class="left mid">
+    {sun_time}
+    </td>
+
+    </tr>
+    </table>
+
+    </td>
+
+    </tr>
+
+    </table>
+
+    </td>
+
+
+    <!-- ПРАВЫЙ НИЗ -->
+    <td class="vline">
+
+    <table width="100%">
+
+    <tr>
+    <td class="center currency">
+    $ {rates['usd']:.2f}
+    </td>
+    </tr>
+
+    <tr>
+    <td class="center currency">
+    € {rates['eur']:.2f}
+    </td>
+    </tr>
+
+    </table>
+
+    </td>
+
+    </tr>
+
+    </table>
+
+    </body>
+    </html>
+    """
+
+    pdf = HTML(string=html).write_pdf()
+    img = convert_from_bytes(pdf)[0]
+
+    img = img.crop(img.getbbox())
+
+    printer_width = PRINT_WIDTH
+    ratio = printer_width / img.width
+    img = img.resize((printer_width, int(img.height * ratio)), Image.LANCZOS)
+
     return img

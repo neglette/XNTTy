@@ -1,5 +1,7 @@
 import time
-from datetime import datetime, timedelta, timezone
+import os
+import sys
+from datetime import datetime, timedelta
 
 from feeds import get_new_news
 from printer import print_image, close_printer
@@ -8,9 +10,24 @@ from renderer import *
 from weather import get_weather, get_rates
 from config import CHECK_INTERVAL
 
-
 PAUSE_PRE_PRINT = 0.9
 PAUSE_POST_PRINT = 0.9
+
+# Проверка флага --test
+TEST_MODE = "--test" in sys.argv
+if TEST_MODE:
+    TEST_FOLDER = "test"
+    os.makedirs(TEST_FOLDER, exist_ok=True)
+
+
+def output_image(img, name=None):
+    """Печать на принтер или сохранение в тестовом режиме"""
+    if TEST_MODE and name:
+        path = os.path.join(TEST_FOLDER, name)
+        img.save(path)
+        print(f"[TEST MODE] Saved image to {path}")
+    else:
+        print_image(img)
 
 
 def print_start_message():
@@ -18,7 +35,7 @@ def print_start_message():
     img = render_status_block("started")
     time.sleep(PAUSE_PRE_PRINT)
     init_beep()
-    print_image(img)
+    output_image(img, "status_started.png" if TEST_MODE else None)
     time.sleep(PAUSE_POST_PRINT)
 
 
@@ -27,7 +44,7 @@ def print_shutdown_message():
     img = render_status_block("stopped")
     time.sleep(PAUSE_PRE_PRINT)
     init_beep()
-    print_image(img)
+    output_image(img, "status_stopped.png" if TEST_MODE else None)
     time.sleep(PAUSE_POST_PRINT)
 
 
@@ -76,7 +93,7 @@ def main():
     img_weather = render_weather_block(weather, rates)
     time.sleep(PAUSE_PRE_PRINT)
     print_beep()
-    print_image(img_weather)
+    output_image(img_weather, "weather.png" if TEST_MODE else None)
     time.sleep(PAUSE_POST_PRINT)
 
     # --- СТАРТОВЫЙ ДАЙДЖЕСТ (новости за 4 часа) ---
@@ -86,7 +103,7 @@ def main():
         img_digest = render_digest(startup_news)
         time.sleep(PAUSE_PRE_PRINT)
         print_beep()
-        print_image(img_digest)
+        output_image(img_digest, "digest.png" if TEST_MODE else None)
         time.sleep(PAUSE_POST_PRINT)
         last_digest_slot = get_digest_slot(datetime.now())
 
@@ -103,7 +120,7 @@ def main():
                     img_item = render_important_news(item)
                     time.sleep(PAUSE_PRE_PRINT)
                     alert_beep()
-                    print_image(img_item)
+                    output_image(img_item)
                     time.sleep(PAUSE_POST_PRINT)
                 else:
                     ts = item.get("timestamp", datetime.now())
@@ -119,7 +136,7 @@ def main():
                 img_weather = render_weather_block(weather, rates)
                 time.sleep(PAUSE_PRE_PRINT)
                 print_beep()
-                print_image(img_weather)
+                output_image(img_weather)
                 time.sleep(PAUSE_POST_PRINT)
                 next_weather = next_weather_time(now)
 
@@ -132,7 +149,7 @@ def main():
                     img_digest = render_digest(items)
                     time.sleep(PAUSE_PRE_PRINT)
                     print_beep()
-                    print_image(img_digest)
+                    output_image(img_digest)
                     time.sleep(PAUSE_POST_PRINT)
                     del digest_slots[slot_to_print]
                 last_digest_slot = current_slot

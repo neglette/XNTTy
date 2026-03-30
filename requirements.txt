@@ -9,3 +9,6 @@ qrcode
 requests
 setuptools
 wheel
+playwright
+pdf2image
+weasyprint

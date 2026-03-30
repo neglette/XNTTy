@@ -5,7 +5,8 @@ load_dotenv()
 
 # --- FROM .env ---
 WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
-WEATHER_CITY = os.getenv("WEATHER_CITY")
+LAT = os.getenv("LAT")
+LON = os.getenv("LON")
 VENDOR_ID = int(os.getenv("VENDOR_ID"), 16)  # hex в int
 PRODUCT_ID = int(os.getenv("PRODUCT_ID"), 16)  # hex в int
 
