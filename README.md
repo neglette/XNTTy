@@ -1,4 +1,4 @@
-# XNTTy – Xprinter News Teletype v 1.93.93
+# XNTTy – Xprinter News Teletype v 1.93.117
 
 ## О проекте
 

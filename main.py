@@ -113,7 +113,7 @@ def main():
                     img_item = render_important_news(item)
                     time.sleep(PAUSE_PRE_PRINT)
                     beep(alert_beep)
-                    output_image(img_item)
+                    output_image(img_item, "item.png" if TEST_MODE else None)
                     time.sleep(PAUSE_POST_PRINT)
                 else:
                     ts = item.get("timestamp", datetime.now())
