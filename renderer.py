@@ -1,5 +1,4 @@
 from weasyprint import HTML
-import io
 from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime
 import qrcode

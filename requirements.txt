@@ -12,3 +12,4 @@ wheel
 playwright
 pdf2image
 weasyprint
+cairosvg
