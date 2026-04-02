@@ -1,4 +1,4 @@
-# XNTTy – Xprinter News Teletype v 1.93
+# XNTTy – Xprinter News Teletype v 1.93.93
 
 ## О проекте
 
@@ -15,6 +15,8 @@ XNTTy — программа для твоего термопринтера Xpri
 - Процессинг и печать курса валют;
 - Разнообразные сигналы встроенного бипера принтера, создающие атмосферу старого телетайпа;
 - Программа совместима с большинством моделей термопринтеров Xprinter, но протестирована только на XP-365B.  
+
+Используй флаг "--test" для запуска без непосредственной печати и звуков.
 
 ---
 
@@ -72,6 +74,8 @@ Features:
 - Processes and prints currency rates.
 - Various built-in printer beeps create a retro teletype effect;
 - The program is compatible with most Xprinter thermal printer models, but has been tested only on the XP-365B.
+
+Use "--test" flag for start in test mode (without printing, only saving imgs).
 
 ## Installation
 
