@@ -13,6 +13,9 @@ PRODUCT_ID = int(os.getenv("PRODUCT_ID"), 16)  # hex в int
 # ---  PRINT ---
 PAPER_WIDTH_MM = 80
 
+PAUSE_PRE_PRINT = 0.9
+PAUSE_POST_PRINT = 0.9
+
 META_SPACING = 10
 DASH_STEP = 14
 
@@ -29,7 +32,8 @@ DOUBLE_LINE_WIDTH = 2
 
 # ---  CHECK INTERVAL ---
 CHECK_INTERVAL = 60
-
+INTERVAL_DIGEST_MINUTES = 60      # интервал для печати дайджеста
+INTERVAL_WEATHER_MINUTES = 240    # интервал для печати погоды (4 часа)
 
 # ---  PATHS ---
 DB_FILE = "printed_news.json"

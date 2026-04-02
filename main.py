@@ -8,10 +8,7 @@ from printer import print_image, close_printer
 from beeper import init_beep, print_beep, alert_beep
 from renderer import *
 from weather import get_weather, get_rates
-from config import CHECK_INTERVAL
-
-PAUSE_PRE_PRINT = 0.9
-PAUSE_POST_PRINT = 0.9
+from config import CHECK_INTERVAL, INTERVAL_DIGEST_MINUTES, INTERVAL_WEATHER_MINUTES, PAUSE_PRE_PRINT, PAUSE_POST_PRINT
 
 # Проверка флага --test
 TEST_MODE = "--test" in sys.argv
@@ -53,31 +50,23 @@ def print_shutdown_message():
     time.sleep(PAUSE_POST_PRINT)
 
 
-def get_digest_slot(dt):
-    """Получаем таймслот для дайджеста (каждые 30 минут)"""
-    return dt.replace(
-        minute=(dt.minute // 30) * 30,
-        second=0,
-        microsecond=0
-    )
+def get_slot(dt, interval_minutes):
+    """Получаем таймслот для заданного интервала"""
+    total_minutes = dt.hour * 60 + dt.minute
+    slot_minutes = (total_minutes // interval_minutes) * interval_minutes
+    hour, minute = divmod(slot_minutes, 60)
+    return dt.replace(hour=hour, minute=minute, second=0, microsecond=0)
 
 
-def next_digest_time(now):
-    """Следующий таймслот через 30 минут"""
-    minute = (now.minute // 30 + 1) * 30
-    if minute >= 60:
-        return now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
-    else:
-        return now.replace(minute=minute, second=0, microsecond=0)
-
-
-def next_weather_time(now):
-    """Следующее обновление погоды каждые 4 часа"""
-    hour = (now.hour // 4 + 1) * 4
-    if hour >= 24:
-        return now.replace(hour=0, minute=5, second=0, microsecond=0) + timedelta(days=1)
-    else:
-        return now.replace(hour=hour, minute=5, second=0, microsecond=0)
+def next_time(now, interval_minutes):
+    """Следующее время события через заданный интервал"""
+    total_minutes = now.hour * 60 + now.minute
+    next_slot_minutes = (
+        (total_minutes // interval_minutes) + 1) * interval_minutes
+    days_to_add = next_slot_minutes // (24 * 60)
+    next_slot_minutes = next_slot_minutes % (24 * 60)
+    hour, minute = divmod(next_slot_minutes, 60)
+    return now.replace(hour=hour, minute=minute, second=0, microsecond=0) + timedelta(days=days_to_add)
 
 
 def main():
@@ -85,12 +74,11 @@ def main():
 
     digest_slots = {}
     last_digest_slot = None
-    last_weather_slot = None
+    last_weather_time = None
 
     now = datetime.now()
-
-    next_digest = next_digest_time(now)
-    next_weather = next_weather_time(now)
+    next_digest = next_time(now, INTERVAL_DIGEST_MINUTES)
+    next_weather = next_time(now, INTERVAL_WEATHER_MINUTES)
 
     # --- ПЕЧАТЬ ПОГОДЫ ПРИ СТАРТЕ ---
     weather = get_weather()
@@ -100,8 +88,9 @@ def main():
     beep(print_beep)
     output_image(img_weather, "weather.png" if TEST_MODE else None)
     time.sleep(PAUSE_POST_PRINT)
+    last_weather_time = get_slot(datetime.now(), INTERVAL_WEATHER_MINUTES)
 
-    # --- СТАРТОВЫЙ ДАЙДЖЕСТ (новости за 4 часа) ---
+    # --- СТАРТОВЫЙ ДАЙДЖЕСТ (новости за последний интервал) ---
     startup_news = get_new_news(first_run=True)
     if startup_news:
         startup_news.sort(key=lambda x: x["timestamp"])
@@ -110,16 +99,15 @@ def main():
         beep(print_beep)
         output_image(img_digest, "digest.png" if TEST_MODE else None)
         time.sleep(PAUSE_POST_PRINT)
-        last_digest_slot = get_digest_slot(datetime.now())
+        last_digest_slot = get_slot(datetime.now(), INTERVAL_DIGEST_MINUTES)
 
     try:
         while True:
             now = datetime.now()
-            current_slot = get_digest_slot(now)
+            current_digest_slot = get_slot(now, INTERVAL_DIGEST_MINUTES)
 
             # --- СБОР НОВОСТЕЙ ---
             news = get_new_news(first_run=False)
-
             for item in news:
                 if item.get("important", False):
                     img_item = render_important_news(item)
@@ -129,10 +117,8 @@ def main():
                     time.sleep(PAUSE_POST_PRINT)
                 else:
                     ts = item.get("timestamp", datetime.now())
-                    slot = get_digest_slot(ts)
-                    if slot not in digest_slots:
-                        digest_slots[slot] = []
-                    digest_slots[slot].append(item)
+                    slot = get_slot(ts, INTERVAL_DIGEST_MINUTES)
+                    digest_slots.setdefault(slot, []).append(item)
 
             # --- ПЕЧАТЬ ПОГОДЫ ---
             if now >= next_weather:
@@ -143,11 +129,13 @@ def main():
                 beep(print_beep)
                 output_image(img_weather)
                 time.sleep(PAUSE_POST_PRINT)
-                next_weather = next_weather_time(now)
+                last_weather_time = get_slot(now, INTERVAL_WEATHER_MINUTES)
+                next_weather = next_time(now, INTERVAL_WEATHER_MINUTES)
 
             # --- ПЕЧАТЬ ДАЙДЖЕСТА ---
-            if current_slot != last_digest_slot:
-                slot_to_print = current_slot - timedelta(minutes=30)
+            if current_digest_slot != last_digest_slot:
+                slot_to_print = current_digest_slot - \
+                    timedelta(minutes=INTERVAL_DIGEST_MINUTES)
                 items = digest_slots.get(slot_to_print, [])
                 if items:
                     items.sort(key=lambda x: x["timestamp"])
@@ -157,7 +145,7 @@ def main():
                     output_image(img_digest)
                     time.sleep(PAUSE_POST_PRINT)
                     del digest_slots[slot_to_print]
-                last_digest_slot = current_slot
+                last_digest_slot = current_digest_slot
 
             time.sleep(CHECK_INTERVAL)
 
