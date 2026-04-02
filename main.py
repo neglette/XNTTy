@@ -20,6 +20,12 @@ if TEST_MODE:
     os.makedirs(TEST_FOLDER, exist_ok=True)
 
 
+def beep(func):
+    """Вызывает бипер только если не тестовый режим"""
+    if not TEST_MODE:
+        func()
+
+
 def output_image(img, name=None):
     """Печать на принтер или сохранение в тестовом режиме"""
     if TEST_MODE and name:
@@ -34,16 +40,15 @@ def print_start_message():
     print("TeleType started")
     img = render_status_block("started")
     time.sleep(PAUSE_PRE_PRINT)
-    init_beep()
+    beep(init_beep)
     output_image(img, "status_started.png" if TEST_MODE else None)
     time.sleep(PAUSE_POST_PRINT)
 
 
 def print_shutdown_message():
-    print("TeleType stopped")
     img = render_status_block("stopped")
     time.sleep(PAUSE_PRE_PRINT)
-    init_beep()
+    beep(init_beep)
     output_image(img, "status_stopped.png" if TEST_MODE else None)
     time.sleep(PAUSE_POST_PRINT)
 
@@ -87,12 +92,12 @@ def main():
     next_digest = next_digest_time(now)
     next_weather = next_weather_time(now)
 
-    # --- ПЕЧАТЬ ПОГОДУ ПРИ СТАРТЕ ---
+    # --- ПЕЧАТЬ ПОГОДЫ ПРИ СТАРТЕ ---
     weather = get_weather()
     rates = get_rates()
     img_weather = render_weather_block(weather, rates)
     time.sleep(PAUSE_PRE_PRINT)
-    print_beep()
+    beep(print_beep)
     output_image(img_weather, "weather.png" if TEST_MODE else None)
     time.sleep(PAUSE_POST_PRINT)
 
@@ -102,7 +107,7 @@ def main():
         startup_news.sort(key=lambda x: x["timestamp"])
         img_digest = render_digest(startup_news)
         time.sleep(PAUSE_PRE_PRINT)
-        print_beep()
+        beep(print_beep)
         output_image(img_digest, "digest.png" if TEST_MODE else None)
         time.sleep(PAUSE_POST_PRINT)
         last_digest_slot = get_digest_slot(datetime.now())
@@ -119,7 +124,7 @@ def main():
                 if item.get("important", False):
                     img_item = render_important_news(item)
                     time.sleep(PAUSE_PRE_PRINT)
-                    alert_beep()
+                    beep(alert_beep)
                     output_image(img_item)
                     time.sleep(PAUSE_POST_PRINT)
                 else:
@@ -129,18 +134,18 @@ def main():
                         digest_slots[slot] = []
                     digest_slots[slot].append(item)
 
-            # --- ПЕЧАТЬ ПОГОДУ ---
+            # --- ПЕЧАТЬ ПОГОДЫ ---
             if now >= next_weather:
                 weather = get_weather()
                 rates = get_rates()
                 img_weather = render_weather_block(weather, rates)
                 time.sleep(PAUSE_PRE_PRINT)
-                print_beep()
+                beep(print_beep)
                 output_image(img_weather)
                 time.sleep(PAUSE_POST_PRINT)
                 next_weather = next_weather_time(now)
 
-            # --- ПЕЧАТЬ ДАЙДЖЕСТ ---
+            # --- ПЕЧАТЬ ДАЙДЖЕСТА ---
             if current_slot != last_digest_slot:
                 slot_to_print = current_slot - timedelta(minutes=30)
                 items = digest_slots.get(slot_to_print, [])
@@ -148,7 +153,7 @@ def main():
                     items.sort(key=lambda x: x["timestamp"])
                     img_digest = render_digest(items)
                     time.sleep(PAUSE_PRE_PRINT)
-                    print_beep()
+                    beep(print_beep)
                     output_image(img_digest)
                     time.sleep(PAUSE_POST_PRINT)
                     del digest_slots[slot_to_print]
@@ -157,6 +162,7 @@ def main():
             time.sleep(CHECK_INTERVAL)
 
     except KeyboardInterrupt:
+        print("Stopped.")
         print_shutdown_message()
     finally:
         close_printer()

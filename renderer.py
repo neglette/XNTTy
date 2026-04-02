@@ -625,7 +625,12 @@ def render_weather_block(weather, rates):
     pdf = HTML(string=html).write_pdf()
     img = convert_from_bytes(pdf)[0]
 
-    img = img.crop(img.getbbox())
+    from PIL import ImageOps
+
+    gray = img.convert("L")
+    bbox = ImageOps.invert(gray).getbbox()
+    if bbox:
+        img = img.crop(bbox)
 
     printer_width = PRINT_WIDTH
     ratio = printer_width / img.width
