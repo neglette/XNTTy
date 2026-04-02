@@ -1,5 +1,5 @@
 from weasyprint import HTML
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 from datetime import datetime
 import qrcode
 from weather_icons import *
@@ -119,63 +119,118 @@ def wrap_text_by_pixel_width(text, font, max_width):
 # --------------------
 
 
-def render_status_block(status_text):
+def render_status_block(status_text, is_start=True):
     from version import VERSION, APP_NAME
+    from datetime import datetime
+    from weasyprint import HTML
+    from pdf2image import convert_from_bytes
+    from PIL import Image, ImageOps
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    lines = [
-        f"{APP_NAME} v{VERSION}",
-        status_text,
-        now
-    ]
+    if is_start:
+        icon_svg = """
+        <svg width="140" height="140" viewBox="0 0 100 100">
+        <polygon points="30,20 80,50 30,80" fill="black"/>
+        </svg>
+        """
+    else:
+        icon_svg = """
+        <svg width="140" height="140" viewBox="0 0 100 100">
+        <rect x="25" y="25" width="50" height="50" fill="black"/>
+        </svg>
+        """
 
-    # --- измерение ---
-    dummy_img = Image.new("1", (PRINT_WIDTH, 1000), 255)
-    draw = ImageDraw.Draw(dummy_img)
+    html = f"""
+    <html>
+    <head>
+    <meta charset="utf-8">
 
-    y = PADDING_Y
-    max_w = 0
+    <style>
 
-    for line in lines:
-        bbox = draw.textbbox((0, 0), line, font=FONT_MONO)
-        w = bbox[2] - bbox[0]
-        h = bbox[3] - bbox[1]
+    @page {{
+        margin:0;
+    }}
 
-        max_w = max(max_w, w)
-        y += h + LINE_SPACING
+    body {{
+        margin:0;
+        padding:0;
+        font-family:sans-serif;
+    }}
 
-    total_h = y + PADDING_Y
+    table {{
+        border-collapse:collapse;
+        width:100%;
+    }}
 
-    # --- финальное изображение ---
-    img = Image.new("1", (PRINT_WIDTH, total_h), 255)
-    draw = ImageDraw.Draw(img)
+    .main {{
+        border:3px solid black;
+    }}
 
-    # рамка
-    draw.rectangle(
-        [(0, 0), (PRINT_WIDTH - 1, total_h - 1)],
-        outline=0,
-        width=2
-    )
+    td {{
+        padding:14px;
+        vertical-align:middle;
+    }}
 
-    # --- текст ---
-    y = PADDING_Y
+    .icon {{
+        width:140px;
+        text-align:center;
+    }}
 
-    for line in lines:
-        bbox = draw.textbbox((0, 0), line, font=FONT_MONO)
-        w = bbox[2] - bbox[0]
-        h = bbox[3] - bbox[1]
+    .text {{
+        border-left:2px solid black;
+        text-align:center;
+    }}
 
-        x = (PRINT_WIDTH - w) // 2
-        draw.text((x, y), line, font=FONT_MONO, fill=0)
+    .title {{
+        font-size:48px;
+        font-weight:bold;
+    }}
 
-        y += h + LINE_SPACING
+    .mid {{
+        font-size:36px;
+    }}
+
+    </style>
+    </head>
+
+    <body>
+
+    <table class="main">
+
+    <tr>
+
+    <td class="icon" width="30%">
+    {icon_svg}
+    </td>
+
+    <td class="text" width="70%">
+        <div class="title">{APP_NAME} v{VERSION}</div>
+        <div class="mid">{status_text}</div>
+        <div class="mid">{now}</div>
+    </td>
+
+    </tr>
+
+    </table>
+
+    </body>
+    </html>
+    """
+
+    pdf = HTML(string=html).write_pdf()
+    img = convert_from_bytes(pdf)[0]
+
+    gray = img.convert("L")
+    bbox = ImageOps.invert(gray).getbbox()
+    if bbox:
+        img = img.crop(bbox)
+
+    printer_width = PRINT_WIDTH
+    ratio = printer_width / img.width
+    img = img.resize((printer_width, int(img.height * ratio)), Image.LANCZOS)
 
     return img
-
-# --------------------
-# IMPORTANT NEWS
-# --------------------
 
 
 def render_important_news(item):
@@ -309,13 +364,15 @@ def render_normal_news(item):
 
 
 def render_digest(items):
-    img = Image.new("L", (PRINT_WIDTH, 3000), 255)
-    draw = ImageDraw.Draw(img)
+    from weasyprint import HTML
+    from pdf2image import convert_from_bytes
+    from PIL import Image, ImageOps
 
-    y = PADDING_Y
+    rows = ""
 
-    for item in items:
-        title = item.get("title", "")
+    for i, item in enumerate(items):
+
+        title = clean_text(item.get("title", ""))
         ts = item.get("timestamp")
 
         if ts:
@@ -323,69 +380,120 @@ def render_digest(items):
         else:
             time_str = "--:--"
 
-        # ---------- BULLET + TIME ----------
-        header = f"{time_str} || "
+        dashed = " dashed" if i > 0 else ""
 
-        # измеряем ширину таймштампа
-        bbox = draw.textbbox((0, 0), header, font=FONT_MONO)
-        header_width = bbox[2] - bbox[0]
-        h = bbox[3] - bbox[1]
+        rows += f"""
+        <tr class="{dashed}">
+            <td class="time">{time_str}</td>
+            <td class="title">{title}</td>
+        </tr>
+        """
 
-        # рисуем таймштамп
-        draw.text((0, y), header, font=FONT_MONO, fill=0)
+    html = f"""
+    <html>
+    <head>
+    <meta charset="utf-8">
 
-        # ---------- TITLE ----------
-        # Доступная ширина для первой строки с учётом таймштампа
-        first_line_max_width = PRINT_WIDTH - header_width - PADDING_X
-        rest_max_width = PRINT_WIDTH - 2 * PADDING_X
+    <style>
 
-        words = title.split()
-        lines = []
-        current_line = ""
-        first_line = True
+    @page {{
+        margin:0;
+    }}
 
-        for word in words:
-            test_line = current_line + (" " if current_line else "") + word
-            w = FONT_UI_TITLE.getbbox(
-                test_line)[2] - FONT_UI_TITLE.getbbox(test_line)[0]
+    body {{
+        margin:0;
+        padding:0;
+        font-family:sans-serif;
+    }}
 
-            max_width = first_line_max_width if first_line else rest_max_width
+    table {{
+    border-collapse: collapse;
+    table-layout: fixed;
+    width: 100%;
+    }}
 
-            if w <= max_width:
-                current_line = test_line
-            else:
-                lines.append(current_line)
-                current_line = word
-                first_line = False
+    td {{
+        vertical-align: top;
+        padding: 6px 8px;
+    }}
 
-        if current_line:
-            lines.append(current_line)
+    /* колонка времени */
 
-        # рисуем строки
-        first_line = True
-        for line in lines:
-            x = header_width if first_line else 0
-            draw.text((x, y), line, font=FONT_UI_TITLE, fill=0)
-            y += FONT_SIZE_UI_TITLE + LINE_SPACING
-            first_line = False
+    .time {{
+        width: 12%;
+        font-family: monospace;
+        font-size: 20px;
+        text-align: left;
+        padding-left: 2px;
+        padding-right: 6px;
+    }}
 
-        # небольшой отступ между новостями
-        y += LINE_SPACING * 2
+    /* текст новости */
 
-    img = img.crop((0, 0, PRINT_WIDTH, y))
-    img = thermal_threshold(img)
+    .title {{
+        width: 88%;
+        border-left: 2px solid black;
+        font-size: 22px;
+        padding-left: 10px;
+        word-break: normal;
+    }}
+
+    /* пунктир */
+
+    tr.dashed td {{
+        border-top: 1px dashed black;
+        padding-top: 8px;
+    }}
+
+    </style>
+    </head>
+
+    <body>
+
+    <table>
+    {rows}
+    </table>
+
+    </body>
+    </html>
+    """
+
+    pdf = HTML(string=html).write_pdf()
+
+    # ---- берём ВСЕ страницы ----
+    pages = convert_from_bytes(pdf)
+
+    # ---- склеиваем вертикально ----
+    width = pages[0].width
+    height = sum(p.height for p in pages)
+
+    img = Image.new("RGB", (width, height), "white")
+
+    y = 0
+    for p in pages:
+        img.paste(p, (0, y))
+        y += p.height
+
+    gray = img.convert("L")
+
+    bbox = ImageOps.invert(gray).getbbox()
+    if bbox:
+        img = img.crop(bbox)
+
+    printer_width = PRINT_WIDTH
+    ratio = printer_width / img.width
+
+    img = img.resize(
+        (printer_width, int(img.height * ratio)),
+        Image.LANCZOS
+    )
 
     return img
 
-
 # --- предполагается, что weather и rates уже получены ---
 
+
 def render_weather_block(weather, rates):
-    from pathlib import Path
-    from datetime import datetime
-    from weasyprint import HTML
-    from pdf2image import convert_from_bytes
-    from PIL import Image
 
     ICON_DIR = Path(__file__).parent / "weather_icons"
 
@@ -397,8 +505,12 @@ def render_weather_block(weather, rates):
         300
     )
 
-    now = datetime.now().strftime("%H:%M")
-    if now < weather["sunset"]:
+    now = datetime.now().time()
+
+    sunrise = datetime.strptime(weather["sunrise"], "%H:%M").time()
+    sunset = datetime.strptime(weather["sunset"], "%H:%M").time()
+
+    if sunrise <= now < sunset:
         sun_icon = "wi-sunset.svg"
         sun_time = weather["sunset"]
     else:
@@ -422,13 +534,6 @@ def render_weather_block(weather, rates):
     font-family:sans-serif;
     }}
 
-    body::before {{
-    content: "";
-    display: block;
-    border-top: 1px solid black;
-    width: 100%;
-    }}
-
     table {{
     border-collapse:collapse;
     width:100%;
@@ -446,7 +551,11 @@ def render_weather_block(weather, rates):
     .center {{ text-align:center; }}
     .left {{ text-align:left; }}
 
-    .vline {{ border-left:2px solid black; }}
+    .vdivider {{
+    width:2px;
+    background:black;
+    padding:0;
+    }}
 
     .hline > td {{
     border-top:2px solid black;
@@ -486,8 +595,7 @@ def render_weather_block(weather, rates):
 
     <tr>
 
-    <!-- ЛЕВЫЙ ВЕРХ -->
-    <td width="66%">
+    <td width="65%">
 
     <table width="100%">
     <tr>
@@ -506,9 +614,9 @@ def render_weather_block(weather, rates):
 
     </td>
 
+    <td class="vdivider"></td>
 
-    <!-- ПРАВЫЙ ВЕРХ -->
-    <td width="34%" class="vline">
+    <td width="35%">
 
     <table width="100%">
 
@@ -545,10 +653,8 @@ def render_weather_block(weather, rates):
 
     </tr>
 
-
     <tr class="hline">
 
-    <!-- ЛЕВЫЙ НИЗ -->
     <td>
 
     <table width="100%">
@@ -559,8 +665,8 @@ def render_weather_block(weather, rates):
     <img src="{uri(get_moon_icon(weather['moon_phase']))}" class="icon">
     </td>
 
-    <td width="60%" rowspan="2" class="center vline">
-    <img src="{uri(get_weather_icon(weather['next']['weather_id'], weather['is_day']))}" class="icon">
+    <td width="60%" rowspan="2" class="center cross-left">
+    <img src="{uri(get_weather_icon(weather['next']['weather_id'], weather['next']['is_day']))}" class="icon">
     <div class="mid">{weather['next']['temp']}°</div>
     </td>
 
@@ -592,9 +698,9 @@ def render_weather_block(weather, rates):
 
     </td>
 
+    <td class="vdivider"></td>
 
-    <!-- ПРАВЫЙ НИЗ -->
-    <td class="vline">
+    <td>
 
     <table width="100%">
 
@@ -624,8 +730,6 @@ def render_weather_block(weather, rates):
 
     pdf = HTML(string=html).write_pdf()
     img = convert_from_bytes(pdf)[0]
-
-    from PIL import ImageOps
 
     gray = img.convert("L")
     bbox = ImageOps.invert(gray).getbbox()

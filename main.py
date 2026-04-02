@@ -46,7 +46,7 @@ def print_start_message():
 
 
 def print_shutdown_message():
-    img = render_status_block("stopped")
+    img = render_status_block("stopped", False)
     time.sleep(PAUSE_PRE_PRINT)
     beep(init_beep)
     output_image(img, "status_stopped.png" if TEST_MODE else None)
